@@ -1,0 +1,255 @@
+diff --git a/firmware/AgentCompanion/src/boards/BoardConfig.h b/firmware/AgentCompanion/src/boards/BoardConfig.h
+index b8fb143..e8f141e 100644
+--- a/firmware/AgentCompanion/src/boards/BoardConfig.h
++++ b/firmware/AgentCompanion/src/boards/BoardConfig.h
+@@ -9,6 +9,8 @@
+ #include "waveshare_amoled_175/BoardConfig.h"
+ #elif defined(AGENT_BOARD_WAVESHARE_LCD_154)
+ #include "waveshare_lcd_154/BoardConfig.h"
++#elif defined(AGENT_BOARD_ROUND_GC9A01_128)
++#include "round_gc9a01_128/BoardConfig.h"
+ #else  // The default board in firmware/boards.json.
+ #include "waveshare_amoled_175/BoardConfig.h"
+ #endif
+diff --git a/firmware/AgentCompanion/src/boards/BoardDrivers.h b/firmware/AgentCompanion/src/boards/BoardDrivers.h
+index 4ef0e13..834162b 100644
+--- a/firmware/AgentCompanion/src/boards/BoardDrivers.h
++++ b/firmware/AgentCompanion/src/boards/BoardDrivers.h
+@@ -5,6 +5,8 @@
+ #include "waveshare_amoled_175/BoardDrivers.h"
+ #elif defined(AGENT_BOARD_WAVESHARE_LCD_154)
+ #include "waveshare_lcd_154/BoardDrivers.h"
++#elif defined(AGENT_BOARD_ROUND_GC9A01_128)
++#include "round_gc9a01_128/BoardDrivers.h"
+ #else  // The default board in firmware/boards.json.
+ #include "waveshare_amoled_175/BoardDrivers.h"
+ #endif
+diff --git a/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardConfig.h b/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardConfig.h
+new file mode 100644
+index 0000000..890314f
+--- /dev/null
++++ b/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardConfig.h
+@@ -0,0 +1,71 @@
++#pragma once
++// Round 1.28" GC9A01 ESP32-S3 board (Spotpear-style "ESP32-S3-1.28-Box": 240x240 round SPI LCD,
++// CST816D touch, WS2812 LED, 16 MB flash, 8 MB PSRAM). This is the board that Tamagooshi calls
++// "round-esp32s3". Every pin below comes from that firmware (lib/drivers/hal/lgfx_round.h and
++// touch_buttons.cpp), which was verified on this hardware. There is no IMU, and no audio wiring
++// is known, so both are left out. Plain constants only: native tests include this file without
++// the vendor libraries.
++#include <cstdint>
++
++class Arduino_GC9A01;
++
++namespace copilot {
++namespace board {
++// Declared here so display code can name the panel without the vendor library.
++using DisplayPanel = ::Arduino_GC9A01;
++constexpr char kId[] = "round-gc9a01-128";
++constexpr char kName[] = "Round 1.28\" GC9A01 ESP32-S3 (Spotpear-style)";
++constexpr char kDisplayPanelName[] = "GC9A01";
++constexpr char kTouchControllerName[] = "CST816D";
++constexpr char kImuName[] = "none";
++}  // namespace board
++
++// The firmware draws 466x466 content on every board. This panel is 240x240, so scanout shows the
++// content at about half size (see ScreenTransform.h). The panel and the content are both round.
++constexpr int kDisplaySize = 466;
++constexpr int kPanelSize = 240;
++constexpr int kDisplayCsPin = 5;
++constexpr int kDisplayDcPin = 47;
++constexpr int kDisplaySckPin = 4;
++constexpr int kDisplayMosiPin = 2;
++constexpr int kDisplayResetPin = 38;
++// Tamagooshi ran this bus at 80 MHz; start at 40 MHz, the clock the 1.54" board needs for pins
++// on the GPIO matrix, and raise it only after the picture is confirmed stable.
++constexpr int kSpiFrequency = 40000000;
++constexpr int kDisplayBacklightPin = 42;
++constexpr bool kDisplayBacklightInverted = true;  // The backlight is on when the pin is low.
++constexpr uint32_t kDisplayBacklightPwmHz = 5000;
++constexpr uint8_t kDisplayBacklightPwmBits = 10;
++constexpr int kBrightness = 155;
++
++// No power latch on this board.
++constexpr int kBatteryPowerLatchPin = -1;
++
++// Audio: this board has a speaker, but its codec wiring is not known, so audio is left out.
++constexpr int kAudioMclkPin = -1;
++constexpr int kAudioBclkPin = -1;
++constexpr int kAudioWordSelectPin = -1;
++constexpr int kAudioDataOutPin = -1;
++constexpr int kAudioAmplifierPin = -1;
++constexpr unsigned kAudioAmplifierStartupMs = 0;
++constexpr uint8_t kAudioCodecI2cAddress = 0x18;
++constexpr int kAudioMinimumCodecVolume = 70;
++constexpr int kAudioMaximumCodecVolume = 83;
++
++// Touch has its own I2C bus (Arduino Wire, I2C port 0).
++constexpr unsigned kI2cPort = 0;
++constexpr uint32_t kI2cFrequency = 400000;
++constexpr int kTouchSda = 11;
++constexpr int kTouchScl = 7;
++constexpr int kTouchInterrupt = 12;
++constexpr int kTouchReset = 6;
++constexpr uint8_t kTouchI2cAddress = 0x15;
++// The panel is mirrored in X (MADCTL 0x48, see BoardDrivers.h); correct this on the device if
++// touch moves the wrong way.
++constexpr bool kTouchMirrorX = false;
++constexpr bool kTouchMirrorY = false;
++constexpr uint8_t kImuI2cAddress = 0x00;  // No IMU.
++
++// The BOOT button. Held at power-on it starts the ROM downloader; after that it is free to read.
++constexpr int kBootButtonPin = 0;
++}  // namespace copilot
+diff --git a/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardDrivers.h b/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardDrivers.h
+new file mode 100644
+index 0000000..cdedd84
+--- /dev/null
++++ b/firmware/AgentCompanion/src/boards/round_gc9a01_128/BoardDrivers.h
+@@ -0,0 +1,111 @@
++#pragma once
++// Device-only drivers for the round 1.28" GC9A01 ESP32-S3 board (see BoardConfig.h).
++#include "BoardConfig.h"
++#include "../../DisplayDma.h"
++#include <Arduino.h>
++#include <Arduino_GFX_Library.h>
++#include <TouchDrvCSTXXX.hpp>
++#include <Wire.h>
++
++namespace copilot {
++namespace board {
++using TouchController = TouchDrvCST816;
++constexpr uint8_t kTouchPointCapacity = 1;
++static_assert(kTouchI2cAddress == CST816_SLAVE_ADDRESS, "Touch address differs from the driver.");
++
++// This board has one variant.
++enum class Variant : uint8_t { Standard };
++constexpr const char* variantName(Variant) { return "standard"; }
++inline Variant variant() { return Variant::Standard; }
++
++// Runs first in setup(): keeps the backlight off until the first frame fades in.
++inline void beginBoard() {
++  ledcAttach(kDisplayBacklightPin, kDisplayBacklightPwmHz, kDisplayBacklightPwmBits);
++  constexpr uint32_t maximum = (1u << kDisplayBacklightPwmBits) - 1;
++  ledcWrite(kDisplayBacklightPin, kDisplayBacklightInverted ? maximum : 0);
++}
++
++// The bus is shared with DisplayDma, so it takes the SPI host only while it writes.
++inline Arduino_DataBus& displayBus() {
++  static Arduino_ESP32SPIDMA bus(kDisplayDcPin, kDisplayCsPin, kDisplaySckPin, kDisplayMosiPin,
++                                 GFX_NOT_DEFINED, SPI3_HOST, true);
++  return bus;
++}
++
++// Colour inversion on (ips = true), as Tamagooshi set it with invert = true.
++inline DisplayPanel& displayPanel() {
++  static DisplayPanel panel(&displayBus(), kDisplayResetPin, 0, true, kPanelSize, kPanelSize);
++  return panel;
++}
++
++// The GC9A01 takes plain SPI mode 0, and pixels with data/command high.
++inline DisplayScanout displayScanout() {
++  return {SPI3_HOST, 0, 0, 0, false, 0, 0, kDisplayCsPin, kDisplayDcPin};
++}
++
++// This module needs vendor register writes after the stock GC9A01 init (gamma and gate timing,
++// mirror-x, BGR). They come from the Tamagooshi bring-up, verified on this exact panel.
++// 0x36 = 0x48 is MADCTL: MX (mirror x) | BGR. setup() sets the brightness right after the panel
++// has started, so the first brightness call sends them once.
++inline void applyVendorInit() {
++  static constexpr uint8_t d62[] = {0x18, 0x0D, 0x71, 0xED, 0x70, 0x70,
++                                    0x18, 0x0F, 0x71, 0xEF, 0x70, 0x70};
++  static constexpr uint8_t d63[] = {0x18, 0x11, 0x71, 0xF1, 0x70, 0x70,
++                                    0x18, 0x13, 0x71, 0xF3, 0x70, 0x70};
++  Arduino_DataBus& bus = displayBus();
++  displayPanel().startWrite();
++  bus.writeCommand(0x62);
++  for (uint8_t v : d62) bus.write(v);
++  bus.writeCommand(0x63);
++  for (uint8_t v : d63) bus.write(v);
++  bus.writeCommand(0x36);
++  bus.write(0x48);
++  bus.writeCommand(0xC3);
++  bus.write(0x1F);
++  bus.writeCommand(0xC4);
++  bus.write(0x1F);
++  displayPanel().endWrite();
++}
++
++inline void setDisplayBrightness(uint8_t brightness) {
++  static bool vendorInitDone = false;
++  if (!vendorInitDone) {
++    vendorInitDone = true;
++    applyVendorInit();
++  }
++  constexpr uint32_t maximum = (1u << kDisplayBacklightPwmBits) - 1;
++  const uint32_t duty = (brightness * maximum + 127) / 255;
++  ledcWrite(kDisplayBacklightPin, kDisplayBacklightInverted ? maximum - duty : duty);
++}
++
++// The CST816D sleeps when idle and then misses I2C reads; the touch sweep reads it every 250 ms.
++inline void configureTouch(TouchController& touch) { touch.disableAutoSleep(); }
++
++// No IMU: begin() gives the reason, and the firmware then runs without orientation.
++class NoAccelerometer {
++ public:
++  const char* begin() { return "No accelerometer on this board"; }
++  bool read(float&, float&, float&) { return false; }
++};
++
++inline NoAccelerometer& accelerometer() {
++  static NoAccelerometer sensor;
++  return sensor;
++}
++
++// No audio output: begin() gives the reason, and the firmware then runs without sound.
++class NoAudioOutput {
++ public:
++  const char* begin(unsigned) { return "no_audio_hardware"; }
++  bool enable(uint8_t) { return false; }
++  bool write(const uint8_t*, size_t) { return false; }
++  void disable() {}
++  int mclkPin() const { return -1; }
++};
++
++inline NoAudioOutput& audioOutput() {
++  static NoAudioOutput output;
++  return output;
++}
++}  // namespace board
++}  // namespace copilot
+diff --git a/firmware/boards.json b/firmware/boards.json
+index 771c780..94a8880 100644
+--- a/firmware/boards.json
++++ b/firmware/boards.json
+@@ -47,6 +47,30 @@
+           "examples/arduino/libraries/SensorLib/src/touch/TouchDrvCST816.h": "Waveshare's CST816 SensorLib"
+         }
+       }
++    },
++    "round-gc9a01-128": {
++      "name": "Round 1.28\" GC9A01 ESP32-S3 (Spotpear-style)",
++      "models": "Round 1.28\" GC9A01 240x240 ESP32-S3 board with CST816D touch (Tamagooshi 'round-esp32s3')",
++      "define": "AGENT_BOARD_ROUND_GC9A01_128",
++      "directory": "round_gc9a01_128",
++      "chip": "esp32s3",
++      "flash_size": "16MB",
++      "fqbn": "esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,CPUFreq=240,FlashMode=qio,FlashSize=16M,PartitionScheme=custom,PSRAM=opi,LoopCore=1,EventsCore=1,DebugLevel=error",
++      "vendor": {
++        "repository": "https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75.git",
++        "revision": "e4344e70c2fa78a13e8a06566507f1ba8af6672a",
++        "directory_env": "WAVESHARE_DIR",
++        "default_directory": "~/Documents/Arduino/ESP32-S3-Touch-AMOLED-1.75",
++        "libraries": [
++          "examples/arduino/libraries/GFX_Library_for_Arduino",
++          "examples/arduino/libraries/SensorLib"
++        ],
++        "required_files": {
++          "examples/arduino/libraries/GFX_Library_for_Arduino/src/databus/Arduino_ESP32SPIDMA.cpp": "Waveshare's GFX library with the SPI DMA bus",
++          "examples/arduino/libraries/SensorLib/src/touch/TouchDrvCST816.h": "Waveshare's CST816 SensorLib",
++          "examples/arduino/libraries/GFX_Library_for_Arduino/src/display/Arduino_GC9A01.cpp": "Waveshare's GFX library with the GC9A01 driver"
++        }
++      }
+     }
+   }
+ }
